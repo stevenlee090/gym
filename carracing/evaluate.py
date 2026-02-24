@@ -14,7 +14,7 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 import numpy as np
 import gymnasium as gym
-from stable_baselines3 import SAC
+from stable_baselines3 import PPO
 from wrappers import GrayScaleObservation, ResizeObservation
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
@@ -40,7 +40,7 @@ def make_single_env(render_mode=None):
 
 def evaluate(args):
     print(f"\nLoading model: {args.model}")
-    model = SAC.load(args.model)
+    model = PPO.load(args.model)
 
     if args.record:
         import imageio

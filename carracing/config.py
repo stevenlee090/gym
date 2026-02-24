@@ -1,5 +1,5 @@
 """
-Experiment configuration for CarRacing-v3 SAC training (continuous action space).
+Experiment configuration for CarRacing-v3 PPO training (continuous action space).
 """
 
 # Environment
@@ -18,32 +18,32 @@ OBS_RESIZE = (64, 64)           # 96x96 → 64x64
 DEVICE = "mps"
 
 # Training
-TOTAL_TIMESTEPS = 1_500_000
-N_ENVS = 8                      # More envs now that GPU handles gradient updates
+TOTAL_TIMESTEPS = 3_000_000     # PPO needs more steps than SAC (on-policy)
+N_ENVS = 16                     # PPO scales well with many envs
 SEED = 42
 
-# SAC hyperparameters (tuned for pixel-based continuous control)
-SAC_KWARGS = {
+# PPO hyperparameters (tuned for pixel-based continuous control)
+PPO_KWARGS = {
     "policy": "CnnPolicy",
     "learning_rate": 3e-4,
-    "buffer_size": 300_000,     # Can afford more now images are smaller (64x64 grayscale)
-    "learning_starts": 10_000,  # Collect random data before first update
+    "n_steps": 512,             # Steps per env before update (total batch = 512×16 = 8192)
     "batch_size": 256,
+    "n_epochs": 10,
     "gamma": 0.99,
-    "tau": 0.005,
-    "ent_coef": "auto",         # Auto-tune entropy for exploration
-    "train_freq": 1,
-    "gradient_steps": 1,
-    "optimize_memory_usage": False,
+    "gae_lambda": 0.95,
+    "clip_range": 0.2,
+    "ent_coef": 0.01,           # Explicit entropy — prevents the collapse we saw with SAC
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
 }
 
 # Callbacks
-EVAL_FREQ = 10_000
+EVAL_FREQ = 20_000
 N_EVAL_EPISODES = 10
-CHECKPOINT_FREQ = 100_000
+CHECKPOINT_FREQ = 200_000
 
 # Paths
 LOG_DIR = "logs"
 MODEL_DIR = "models"
 VIDEO_DIR = "videos"
-MODEL_NAME = "sac_carracing"
+MODEL_NAME = "ppo_carracing"

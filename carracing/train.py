@@ -1,12 +1,12 @@
 """
-Train a SAC agent on CarRacing-v3 (continuous action space, pixel observations).
+Train a PPO agent on CarRacing-v3 (continuous action space, pixel observations).
 
 Uses MPS (Apple Silicon GPU) + grayscale/resize preprocessing for speed.
 
 Usage:
     python train.py
-    python train.py --timesteps 3000000 --n-envs 8
-    python train.py --resume models/sac_carracing_seed42/checkpoints/sac_carracing_500000_steps
+    python train.py --timesteps 5000000 --n-envs 16
+    python train.py --resume models/ppo_carracing_seed42/checkpoints/ppo_carracing_200000_steps
 """
 
 import argparse
@@ -15,8 +15,7 @@ import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 import gymnasium as gym
-from stable_baselines3 import SAC
-from wrappers import GrayScaleObservation, ResizeObservation
+from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecFrameStack, VecTransposeImage
 from stable_baselines3.common.callbacks import (
@@ -26,6 +25,7 @@ from stable_baselines3.common.callbacks import (
 )
 
 import config
+from wrappers import GrayScaleObservation, ResizeObservation
 
 
 def wrap_obs(env: gym.Env) -> gym.Env:
@@ -91,13 +91,14 @@ def train(args):
     tb_log = os.path.join(config.LOG_DIR, "tensorboard")
 
     obs_desc = f"{config.OBS_RESIZE[0]}x{config.OBS_RESIZE[1]} {'gray' if config.OBS_GRAYSCALE else 'rgb'}"
+    total_batch = config.PPO_KWARGS["n_steps"] * args.n_envs
     print(f"\n{'='*50}")
-    print(f"  CarRacing-v3 SAC Training (continuous)")
+    print(f"  CarRacing-v3 PPO Training (continuous)")
     print(f"  run:    {run_name}")
     print(f"  device: {device}")
     print(f"  obs:    {obs_desc} × {config.N_STACK} frames")
     print(f"  steps:  {args.timesteps:,}")
-    print(f"  envs:   {args.n_envs}")
+    print(f"  envs:   {args.n_envs}  (batch: {total_batch:,})")
     print(f"{'='*50}\n")
 
     train_env = make_env(n_envs=args.n_envs, seed=args.seed)
@@ -105,20 +106,20 @@ def train(args):
 
     if args.resume:
         print(f"Resuming from: {args.resume}")
-        model = SAC.load(
+        model = PPO.load(
             args.resume,
             env=train_env,
             device=device,
             tensorboard_log=tb_log,
         )
     else:
-        model = SAC(
+        model = PPO(
             env=train_env,
             verbose=1,
             seed=args.seed,
             device=device,
             tensorboard_log=tb_log,
-            **config.SAC_KWARGS,
+            **config.PPO_KWARGS,
         )
 
     callbacks = build_callbacks(eval_env, run_name, args.n_envs)
@@ -140,7 +141,7 @@ def train(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train SAC on CarRacing-v3")
+    parser = argparse.ArgumentParser(description="Train PPO on CarRacing-v3")
     parser.add_argument("--timesteps", type=int, default=config.TOTAL_TIMESTEPS)
     parser.add_argument("--n-envs", type=int, default=config.N_ENVS)
     parser.add_argument("--seed", type=int, default=config.SEED)
