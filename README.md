@@ -13,7 +13,7 @@ uv sync
 | Folder | Environment | Algorithm | Action Space | Solved |
 |---|---|---|---|---|
 | [`lunarlander/`](lunarlander/) | [LunarLander-v3](https://gymnasium.farama.org/environments/box2d/lunar_lander/) | PPO | Discrete(4) | ≥ 200 |
-| [`carracing/`](carracing/) | [CarRacing-v3](https://gymnasium.farama.org/environments/box2d/car_racing/) | SAC | Continuous Box(3) | ≥ 900 |
+| [`carracing/`](carracing/) | [CarRacing-v3](https://gymnasium.farama.org/environments/box2d/car_racing/) | PPO | Continuous Box(3) | ≥ 900 |
 
 ## Quick Start
 
@@ -23,6 +23,16 @@ cd lunarlander && uv run python train.py
 
 # CarRacing
 cd carracing && uv run python train.py
+```
+
+## Watch a Trained Agent
+
+```bash
+# LunarLander
+cd lunarlander && uv run python evaluate.py --model models/ppo_lunarlander_seed42/best_model --render
+
+# CarRacing
+cd carracing && uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --render
 ```
 
 ## Monitoring
