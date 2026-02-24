@@ -36,15 +36,16 @@ Options:
 
 **Watch live:**
 ```bash
-uv run python evaluate.py --model models/ppo_lunarlander_seed42/best_model --render
+uv run python evaluate.py --model models/<run_name>/best_model --render
 ```
 
 **Save a video:**
 ```bash
-uv run python evaluate.py --model models/ppo_lunarlander_seed42/best_model --record
+uv run python evaluate.py --model models/<run_name>/best_model --record
 ```
 
-> `best_model` is saved whenever eval score improves during training, so it's available before training finishes.
+> `<run_name>` is printed at the start of training (e.g. `ppo_lunarlander_seed42`). `best_model` is saved whenever eval score improves, so it's available before training finishes.
+
 
 ## Monitoring
 

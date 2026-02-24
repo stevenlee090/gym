@@ -27,12 +27,14 @@ cd carracing && uv run python train.py
 
 ## Watch a Trained Agent
 
+After training, models are saved under `models/<run_name>/`. Use `best_model` for the best checkpoint:
+
 ```bash
 # LunarLander
-cd lunarlander && uv run python evaluate.py --model models/ppo_lunarlander_seed42/best_model --render
+cd lunarlander && uv run python evaluate.py --model models/<run_name>/best_model --render
 
 # CarRacing
-cd carracing && uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --render
+cd carracing && uv run python evaluate.py --model models/<run_name>/best_model --render
 ```
 
 ## Monitoring

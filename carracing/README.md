@@ -35,22 +35,24 @@ Options:
 
 ## Watch the Agent Drive
 
+After training, the run name is printed at startup (e.g. `ppo_carracing_seed42`). Models are saved under `models/<run_name>/`.
+
 **Watch the best saved model live:**
 ```bash
 cd carracing
-uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --render
+uv run python evaluate.py --model models/<run_name>/best_model --render
 ```
 
-> `best_model` is updated automatically during training whenever eval score improves — you can watch it mid-training.
+> `best_model` is updated automatically whenever eval score improves — you can watch mid-training.
 
 **Save a video:**
 ```bash
-uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --record
+uv run python evaluate.py --model models/<run_name>/best_model --record
 ```
 
 **Stats only (no window):**
 ```bash
-uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --episodes 10
+uv run python evaluate.py --model models/<run_name>/best_model --episodes 10
 ```
 
 ## Monitoring
