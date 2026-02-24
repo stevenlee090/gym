@@ -15,16 +15,25 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 import numpy as np
 import gymnasium as gym
 from stable_baselines3 import SAC
+from wrappers import GrayScaleObservation, ResizeObservation
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 import config
+
+
+def wrap_obs(env: gym.Env) -> gym.Env:
+    if config.OBS_GRAYSCALE:
+        env = GrayScaleObservation(env)
+    if config.OBS_RESIZE:
+        env = ResizeObservation(env, shape=config.OBS_RESIZE)
+    return env
 
 
 def make_single_env(render_mode=None):
     env_kwargs = {**config.ENV_KWARGS}
     if render_mode:
         env_kwargs["render_mode"] = render_mode
-    env = DummyVecEnv([lambda: gym.make(config.ENV_ID, **env_kwargs)])
+    env = DummyVecEnv([lambda: wrap_obs(gym.make(config.ENV_ID, **env_kwargs))])
     env = VecFrameStack(env, n_stack=config.N_STACK)
     return env
 

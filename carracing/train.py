@@ -1,9 +1,11 @@
 """
 Train a SAC agent on CarRacing-v3 (continuous action space, pixel observations).
 
+Uses MPS (Apple Silicon GPU) + grayscale/resize preprocessing for speed.
+
 Usage:
     python train.py
-    python train.py --timesteps 3000000 --n-envs 4
+    python train.py --timesteps 3000000 --n-envs 8
     python train.py --resume models/sac_carracing_seed42/checkpoints/sac_carracing_500000_steps
 """
 
@@ -14,6 +16,7 @@ warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 import gymnasium as gym
 from stable_baselines3 import SAC
+from wrappers import GrayScaleObservation, ResizeObservation
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecFrameStack, VecTransposeImage
 from stable_baselines3.common.callbacks import (
@@ -25,12 +28,22 @@ from stable_baselines3.common.callbacks import (
 import config
 
 
+def wrap_obs(env: gym.Env) -> gym.Env:
+    """Grayscale + resize to shrink CNN input from 96x96x3 to 64x64x1."""
+    if config.OBS_GRAYSCALE:
+        env = GrayScaleObservation(env)
+    if config.OBS_RESIZE:
+        env = ResizeObservation(env, shape=config.OBS_RESIZE)
+    return env
+
+
 def make_env(n_envs: int, seed: int):
     env = make_vec_env(
         config.ENV_ID,
         n_envs=n_envs,
         seed=seed,
         env_kwargs=config.ENV_KWARGS,
+        wrapper_class=wrap_obs,
     )
     env = VecFrameStack(env, n_stack=config.N_STACK)
     return env
@@ -42,9 +55,10 @@ def make_eval_env(seed: int):
         n_envs=1,
         seed=seed + 1000,
         env_kwargs=config.ENV_KWARGS,
+        wrapper_class=wrap_obs,
     )
     env = VecFrameStack(env, n_stack=config.N_STACK)
-    env = VecTransposeImage(env)  # Match the auto-wrap SB3 applies to train env
+    env = VecTransposeImage(env)
     return env
 
 
@@ -72,15 +86,18 @@ def train(args):
     os.makedirs(config.LOG_DIR, exist_ok=True)
     os.makedirs(config.MODEL_DIR, exist_ok=True)
 
+    device = args.device or config.DEVICE
     run_name = f"{config.MODEL_NAME}_seed{args.seed}"
     tb_log = os.path.join(config.LOG_DIR, "tensorboard")
 
+    obs_desc = f"{config.OBS_RESIZE[0]}x{config.OBS_RESIZE[1]} {'gray' if config.OBS_GRAYSCALE else 'rgb'}"
     print(f"\n{'='*50}")
     print(f"  CarRacing-v3 SAC Training (continuous)")
     print(f"  run:    {run_name}")
-    print(f"  device: cpu")
+    print(f"  device: {device}")
+    print(f"  obs:    {obs_desc} × {config.N_STACK} frames")
     print(f"  steps:  {args.timesteps:,}")
-    print(f"  envs:   {args.n_envs}  (frame stack: {config.N_STACK})")
+    print(f"  envs:   {args.n_envs}")
     print(f"{'='*50}\n")
 
     train_env = make_env(n_envs=args.n_envs, seed=args.seed)
@@ -91,7 +108,7 @@ def train(args):
         model = SAC.load(
             args.resume,
             env=train_env,
-            device="cpu",
+            device=device,
             tensorboard_log=tb_log,
         )
     else:
@@ -99,7 +116,7 @@ def train(args):
             env=train_env,
             verbose=1,
             seed=args.seed,
-            device="cpu",
+            device=device,
             tensorboard_log=tb_log,
             **config.SAC_KWARGS,
         )
@@ -129,5 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=config.SEED)
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to model zip to resume from")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Device override: mps, cpu, cuda")
     args = parser.parse_args()
     train(args)
