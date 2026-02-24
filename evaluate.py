@@ -39,6 +39,8 @@ def evaluate(args):
             video_length=3000,
             name_prefix="lunarlander_eval",
         )
+    elif args.render:
+        env = DummyVecEnv([lambda: make_single_env(render_mode="human")])
     else:
         env = DummyVecEnv([lambda: make_single_env()])
 
@@ -86,7 +88,9 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, required=True,
                         help="Path to saved model (without .zip)")
     parser.add_argument("--episodes", type=int, default=20)
+    parser.add_argument("--render", action="store_true",
+                        help="Watch the agent live in a window")
     parser.add_argument("--record", action="store_true",
-                        help="Record a video of the agent")
+                        help="Record a video to videos/")
     args = parser.parse_args()
     evaluate(args)

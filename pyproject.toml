@@ -5,10 +5,13 @@ description = "PPO training experiment for LunarLander-v3 using Gymnasium"
 requires-python = ">=3.10"
 dependencies = [
     "gymnasium[box2d]>=1.0.0",
-    "stable-baselines3>=2.3.0",
+    "stable-baselines3[extra]>=2.3.0",
     "tensorboard>=2.17.0",
     "numpy>=1.26.0",
     "torch>=2.3.0",
+    "tqdm>=4.66.0",
+    "rich>=13.0.0",
+    "setuptools>=68.0.0,<81",
 ]
 
 [dependency-groups]

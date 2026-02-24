@@ -39,8 +39,21 @@ uv run python evaluate.py --model models/ppo_lunarlander_seed42/best_model
 Options:
 ```
 --episodes INT   Number of evaluation episodes (default: 20)
+--render         Watch the agent live in a pygame window
 --record         Record a video to videos/
 ```
+
+**Watch live:**
+```bash
+uv run python evaluate.py --model models/ppo_lunarlander_seed42/best_model --render
+```
+
+**Save a video:**
+```bash
+uv run python evaluate.py --model models/ppo_lunarlander_seed42/best_model --record
+```
+
+> `best_model` is saved whenever eval score improves during training, so it's available before training finishes.
 
 ## Monitoring
 

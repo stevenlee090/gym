@@ -14,7 +14,7 @@ ENV_KWARGS = {
 
 # Training
 TOTAL_TIMESTEPS = 1_000_000
-N_ENVS = 8                  # Parallel environments for data collection
+N_ENVS = 16                 # Parallel environments for data collection (M1 has cores to spare)
 SEED = 42
 
 # PPO hyperparameters (tuned for LunarLander)

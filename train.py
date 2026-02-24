@@ -10,6 +10,7 @@ Usage:
 import argparse
 import os
 
+import torch
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
@@ -61,6 +62,12 @@ def build_callbacks(eval_env, run_name: str) -> CallbackList:
     return CallbackList([eval_callback, checkpoint_callback])
 
 
+def get_device() -> str:
+    # MlpPolicy has a tiny network — CPU wins over MPS/CUDA due to transfer overhead.
+    # Only use GPU if the user explicitly requests it via --device.
+    return "cpu"
+
+
 def train(args):
     global args_n_envs
     args_n_envs = args.n_envs
@@ -68,14 +75,16 @@ def train(args):
     os.makedirs(config.LOG_DIR, exist_ok=True)
     os.makedirs(config.MODEL_DIR, exist_ok=True)
 
+    device = args.device or get_device()
     run_name = f"{config.MODEL_NAME}_seed{args.seed}"
     tb_log = os.path.join(config.LOG_DIR, "tensorboard")
 
     print(f"\n{'='*50}")
     print(f"  LunarLander-v3 PPO Training")
-    print(f"  run: {run_name}")
-    print(f"  timesteps: {args.timesteps:,}")
-    print(f"  envs: {args.n_envs}")
+    print(f"  run:    {run_name}")
+    print(f"  device: {device}")
+    print(f"  steps:  {args.timesteps:,}")
+    print(f"  envs:   {args.n_envs}")
     print(f"{'='*50}\n")
 
     train_env = make_env(n_envs=args.n_envs, seed=args.seed)
@@ -83,12 +92,13 @@ def train(args):
 
     if args.resume:
         print(f"Resuming from: {args.resume}")
-        model = PPO.load(args.resume, env=train_env, tensorboard_log=tb_log)
+        model = PPO.load(args.resume, env=train_env, device=device, tensorboard_log=tb_log)
     else:
         model = PPO(
             env=train_env,
             verbose=1,
             seed=args.seed,
+            device=device,
             tensorboard_log=tb_log,
             **config.PPO_KWARGS,
         )
@@ -118,5 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=config.SEED)
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to model zip to resume from")
+    parser.add_argument("--device", type=str, default=None,
+                        help="Device override: cpu, mps, cuda (auto-detected if omitted)")
     args = parser.parse_args()
     train(args)
