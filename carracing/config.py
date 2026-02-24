@@ -10,7 +10,7 @@ ENV_KWARGS = {
 }
 N_STACK = 4                     # Frame stacking — needed to infer velocity from pixels
 
-# Observation preprocessing (reduces CNN input ~7x vs raw 96x96x3)
+# Observation preprocessing
 OBS_GRAYSCALE = True            # 96x96x3 → 96x96x1
 OBS_RESIZE = (64, 64)           # 96x96 → 64x64
 
@@ -18,23 +18,26 @@ OBS_RESIZE = (64, 64)           # 96x96 → 64x64
 DEVICE = "mps"
 
 # Training
-TOTAL_TIMESTEPS = 3_000_000     # PPO needs more steps than SAC (on-policy)
-N_ENVS = 16                     # PPO scales well with many envs
+TOTAL_TIMESTEPS = 5_000_000     # More steps — previous run peaked at 1.1M then degraded
+N_ENVS = 8                      # Reduced from 16 — less variance per batch
 SEED = 42
 
-# PPO hyperparameters (tuned for pixel-based continuous control)
+# Schedules — both LR and clip_range decay linearly to prevent late-training instability
+LR_INIT = 3e-4
+CLIP_RANGE_INIT = 0.1           # Tighter than default 0.2 (35% clip fraction was too high)
+
+# PPO hyperparameters
 PPO_KWARGS = {
     "policy": "CnnPolicy",
-    "learning_rate": 3e-4,
-    "n_steps": 512,             # Steps per env before update (total batch = 512×16 = 8192)
+    "n_steps": 1024,            # Larger rollout (batch = 1024×8 = 8192, same as before)
     "batch_size": 256,
     "n_epochs": 10,
     "gamma": 0.99,
     "gae_lambda": 0.95,
-    "clip_range": 0.2,
-    "ent_coef": 0.01,           # Explicit entropy — prevents the collapse we saw with SAC
+    "ent_coef": 0.005,          # Lower than before (0.01 kept std too high late in training)
     "vf_coef": 0.5,
     "max_grad_norm": 0.5,
+    "target_kl": 0.015,         # Early-stop updates if policy changes too much — key fix
 }
 
 # Callbacks

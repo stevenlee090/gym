@@ -28,6 +28,13 @@ import config
 from wrappers import GrayScaleObservation, ResizeObservation
 
 
+def linear_schedule(initial_value: float):
+    """Decay linearly from initial_value to 0 over the course of training."""
+    def schedule(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return schedule
+
+
 def wrap_obs(env: gym.Env) -> gym.Env:
     """Grayscale + resize to shrink CNN input from 96x96x3 to 64x64x1."""
     if config.OBS_GRAYSCALE:
@@ -119,6 +126,8 @@ def train(args):
             seed=args.seed,
             device=device,
             tensorboard_log=tb_log,
+            learning_rate=linear_schedule(config.LR_INIT),
+            clip_range=linear_schedule(config.CLIP_RANGE_INIT),
             **config.PPO_KWARGS,
         )
 
