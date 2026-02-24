@@ -9,6 +9,8 @@ Usage:
 
 import argparse
 import os
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 import torch
 import gymnasium as gym
