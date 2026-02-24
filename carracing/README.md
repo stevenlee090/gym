@@ -1,12 +1,12 @@
-# CarRacing-v3 SAC Experiment
+# CarRacing-v3 PPO Experiment
 
-Reinforcement learning experiment training a SAC agent on the [CarRacing-v3](https://gymnasium.farama.org/environments/box2d/car_racing/) Gymnasium environment using continuous actions and pixel observations.
+Reinforcement learning experiment training a PPO agent on the [CarRacing-v3](https://gymnasium.farama.org/environments/box2d/car_racing/) Gymnasium environment using continuous actions and pixel observations.
 
 ## Environment
 
 | Property | Value |
 |---|---|
-| Observation space | Box(96, 96, 3) — RGB pixel image |
+| Observation space | Box(96, 96, 3) → preprocessed to 64×64 grayscale |
 | Action space | Box(3,) continuous — [steering, gas, brake] |
 | Frame stacking | 4 frames (needed to infer velocity) |
 | Solved threshold | Mean reward ≥ 900 |
@@ -26,27 +26,31 @@ uv run python train.py
 
 Options:
 ```
---timesteps INT    Total training steps (default: 1_500_000)
---n-envs    INT    Parallel environments (default: 4)
+--timesteps INT    Total training steps (default: 3_000_000)
+--n-envs    INT    Parallel environments (default: 16)
 --seed      INT    Random seed (default: 42)
 --resume    PATH   Resume from checkpoint
+--device    STR    Device override: mps, cpu, cuda
 ```
 
-## Evaluation
+## Watch the Agent Drive
 
-**Watch live:**
+**Watch the best saved model live:**
 ```bash
-uv run python evaluate.py --model models/sac_carracing_seed42/best_model --render
+cd carracing
+uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --render
 ```
+
+> `best_model` is updated automatically during training whenever eval score improves — you can watch it mid-training.
 
 **Save a video:**
 ```bash
-uv run python evaluate.py --model models/sac_carracing_seed42/best_model --record
+uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --record
 ```
 
-**Stats only:**
+**Stats only (no window):**
 ```bash
-uv run python evaluate.py --model models/sac_carracing_seed42/best_model --episodes 10
+uv run python evaluate.py --model models/ppo_carracing_seed42/best_model --episodes 10
 ```
 
 ## Monitoring
@@ -60,27 +64,30 @@ uv run tensorboard --logdir logs/tensorboard
 ```
 carracing/
 ├── config.py       # Hyperparameters and paths
-├── train.py        # SAC training script
+├── train.py        # PPO training script
 ├── evaluate.py     # Evaluation + video recording
+├── wrappers.py     # PIL-based grayscale + resize (avoids cv2/SDL2 conflict)
 ├── logs/           # TensorBoard logs (git-ignored)
 ├── models/         # Saved checkpoints + best model (git-ignored)
 └── videos/         # Recorded evaluation videos (git-ignored)
 ```
 
-## Algorithm: SAC
+## Algorithm: PPO
 
-Soft Actor-Critic with CNN policy for pixel observations.
+Proximal Policy Optimization with CNN policy for pixel observations.
 
 | Param | Value |
 |---|---|
 | Policy | CnnPolicy |
 | Learning rate | 3e-4 |
-| Buffer size | 200,000 |
-| Learning starts | 10,000 |
+| n_steps | 512 |
 | Batch size | 256 |
+| n_epochs | 10 |
 | Gamma | 0.99 |
-| Tau | 0.005 |
-| Entropy coef | auto |
+| gae_lambda | 0.95 |
+| ent_coef | 0.01 |
 | Frame stack | 4 |
+| Obs size | 64×64 grayscale |
+| Device | MPS (Apple Silicon) |
 
-SAC is off-policy (replay buffer) and maximizes entropy to encourage exploration — well suited for the continuous steering/gas/brake action space.
+PPO is on-policy with explicit entropy regularisation (`ent_coef=0.01`) to prevent the exploration collapse that off-policy methods like SAC can suffer from on pixel tasks. Large batches (512×16=8192 samples) make efficient use of the MPS GPU.
