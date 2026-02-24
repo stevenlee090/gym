@@ -1,0 +1,15 @@
+[project]
+name = "gym-lunarlander"
+version = "0.1.0"
+description = "PPO training experiment for LunarLander-v3 using Gymnasium"
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium[box2d]>=1.0.0",
+    "stable-baselines3>=2.3.0",
+    "tensorboard>=2.17.0",
+    "numpy>=1.26.0",
+    "torch>=2.3.0",
+]
+
+[dependency-groups]
+dev = []
