@@ -44,6 +44,7 @@ def make_eval_env(seed: int):
         env_kwargs=config.ENV_KWARGS,
     )
     env = VecFrameStack(env, n_stack=config.N_STACK)
+    env = VecTransposeImage(env)  # Match the auto-wrap SB3 applies to train env
     return env
 
 
