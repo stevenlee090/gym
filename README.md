@@ -16,6 +16,7 @@ uv sync
 | [`carracing/`](carracing/) | [CarRacing-v3](https://gymnasium.farama.org/environments/box2d/car_racing/) | PPO | Continuous Box(3) | ≥ 900 |
 | [`acrobot/`](acrobot/) | [Acrobot-v1](https://gymnasium.farama.org/environments/classic_control/acrobot/) | PPO | Discrete(3) | ≥ −100 |
 | [`mountaincar/`](mountaincar/) | [MountainCarContinuous-v0](https://gymnasium.farama.org/environments/classic_control/mountain_car_continuous/) | PPO + KE shaping | Continuous Box(1) | ≥ 90 |
+| [`game2048/`](game2048/) | 2048 (custom numba bitboard) | N-tuple network + TD(0), expectimax | Discrete(4) | Reach 2048 / 16384 |
 
 ## Quick Start
 
@@ -31,6 +32,9 @@ cd acrobot && uv run python train.py
 
 # MountainCar (continuous)
 cd mountaincar && uv run python train.py
+
+# 2048 (then: evaluate.py, visualise.py --open)
+cd game2048 && uv run python train.py
 ```
 
 ## Watch a Trained Agent
@@ -55,3 +59,4 @@ uv run tensorboard --logdir <folder>/logs/tensorboard
 - **MountainCarContinuous** uses a `KineticEnergyShapingWrapper` (`r' = r + 100·v²`) to overcome the sparse reward problem — SAC and TD3 both fail on this environment without it.
 - All MlpPolicy experiments run on CPU (transfer overhead makes MPS/CUDA slower for small networks).
 - CarRacing uses CnnPolicy on MPS (GPU pays off for pixel-based observations).
+- **2048** skips deep RL entirely: a numba-compiled n-tuple network learns by TD self-play at ~5M moves/s on the CPU. See [`game2048/README.md`](game2048/README.md).

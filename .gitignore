@@ -30,3 +30,6 @@ checkpoints/
 # IDE
 .vscode/
 .idea/
+
+# Generated 2048 replay page
+game2048/replay.html
