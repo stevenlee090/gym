@@ -1,0 +1,984 @@
+<meta charset="utf-8">
+<title>Go1 on a Joystick</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --ground: #f2f3f7;
+  --surface: #ffffff;
+  --ink: #161a2e;
+  --ink-2: #4c5270;
+  --ink-3: #7c8199;
+  --rule: #dde0ea;
+  --accent: #3a45a6;
+  --focus: #3a45a6;
+  --screen: #0e1018;
+
+  /* Series: what the robot did (indigo) vs what the joystick asked for (amber) */
+  --act: #3a45a6;
+  --act-fill: rgba(58, 69, 166, 0.12);
+  --cmd: #b86f00;
+  --cmd-soft: rgba(184, 111, 0, 0.14);
+  --seg-alt: rgba(22, 26, 46, 0.04);
+  --good: #2c7a4b;
+  --bad: #c2412d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #10121d;
+    --surface: #181b2a;
+    --ink: #eceefa;
+    --ink-2: #b3b8d4;
+    --ink-3: #858aa6;
+    --rule: #2a2e44;
+    --accent: #9aa4f0;
+    --focus: #9aa4f0;
+    --screen: #07080e;
+    --act: #9aa4f0;
+    --act-fill: rgba(154, 164, 240, 0.14);
+    --cmd: #e5a53a;
+    --cmd-soft: rgba(229, 165, 58, 0.16);
+    --seg-alt: rgba(236, 238, 250, 0.04);
+    --good: #6cc08b;
+    --bad: #ec7a63;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #10121d;
+  --surface: #181b2a;
+  --ink: #eceefa;
+  --ink-2: #b3b8d4;
+  --ink-3: #858aa6;
+  --rule: #2a2e44;
+  --accent: #9aa4f0;
+  --focus: #9aa4f0;
+  --screen: #07080e;
+  --act: #9aa4f0;
+  --act-fill: rgba(154, 164, 240, 0.14);
+  --cmd: #e5a53a;
+  --cmd-soft: rgba(229, 165, 58, 0.16);
+  --seg-alt: rgba(236, 238, 250, 0.04);
+  --good: #6cc08b;
+  --bad: #ec7a63;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 15px/1.55 "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  padding-inline: 20px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 64px; display: grid; gap: 56px; }
+.mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+.num { font-variant-numeric: tabular-nums; }
+
+header { display: grid; gap: 14px; }
+.eyebrow-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.eyebrow {
+  font: 500 12px/1.3 "JetBrains Mono", ui-monospace, Menlo, monospace;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3);
+}
+.pill {
+  font: 500 11px/1 "JetBrains Mono", ui-monospace, Menlo, monospace; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 5px 8px; border-radius: 999px; border: 1px solid currentColor;
+}
+.pill.done { color: var(--good); }
+.pill.live { color: var(--cmd); }
+h1 {
+  font-family: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  font-weight: 800; font-size: clamp(42px, 7.5vw, 80px); line-height: 0.95;
+  letter-spacing: -0.035em; margin: 0; text-wrap: balance;
+}
+h1 em { font-style: normal; color: var(--cmd); }
+.lede { max-width: 64ch; color: var(--ink-2); font-size: 17px; margin: 0; }
+.lede strong { color: var(--ink); font-weight: 600; }
+
+h2 {
+  font-family: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  font-weight: 700; font-size: 26px; letter-spacing: -0.02em; line-height: 1.15;
+  margin: 0; text-wrap: balance;
+}
+.section-head { display: grid; gap: 6px; max-width: 66ch; }
+.section-head p { margin: 0; color: var(--ink-2); }
+section { display: grid; gap: 24px; }
+.label {
+  font: 500 11px/1.3 "JetBrains Mono", ui-monospace, Menlo, monospace;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3);
+}
+
+/* Live drive */
+.drive-stage {
+  position: relative; border-radius: 14px; overflow: hidden; background: var(--screen);
+  aspect-ratio: 16 / 9; max-width: 100%; max-height: 72vh; width: 100%;
+}
+@media (max-width: 640px) { .drive-stage { aspect-ratio: 4 / 5; } }
+.drive-stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.drive-stage canvas:active { cursor: grabbing; }
+.hud {
+  position: absolute; background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.hud.readout-hud { left: 12px; top: 12px; min-width: 220px; }
+.hud.readout-hud table.vals { font-size: 13px; }
+.hud.readout-hud table.vals td { padding: 3px 0; }
+.hud.status-hud { right: 12px; top: 12px; display: grid; gap: 4px; text-align: right; font-size: 12px; color: var(--ink-2); }
+.hud.status-hud b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.keys-hud { position: absolute; left: 12px; bottom: 12px; display: grid; gap: 6px; }
+.keyrow { display: flex; gap: 6px; }
+.cap {
+  width: 44px; height: 44px; padding: 0; display: grid; place-items: center; gap: 0;
+  font: 600 15px/1 "JetBrains Mono", ui-monospace, Menlo, monospace; border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--rule);
+  box-shadow: 0 2px 0 var(--rule); touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.cap small { font: 500 8px/1 "Instrument Sans", system-ui, sans-serif; color: var(--ink-3); letter-spacing: 0.02em; }
+.cap.wide { width: 94px; }
+.cap.on { background: var(--cmd); color: #fff; border-color: var(--cmd); box-shadow: none; transform: translateY(2px); }
+.cap.on small { color: rgba(255, 255, 255, 0.85); }
+.actions-hud { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
+.actions-hud button { background: color-mix(in srgb, var(--surface) 88%, transparent); font-size: 13px; padding: 8px 11px; }
+.actions-hud kbd, .drive-help kbd {
+  font: 500 11px/1 "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--ink-3);
+  border: 1px solid var(--rule); border-radius: 4px; padding: 2px 4px; margin-left: 4px;
+}
+.loading {
+  position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+  color: #c9cdf0; font-size: 15px; background: var(--screen);
+}
+.loading.err { color: #ffb4a5; }
+.fell-banner {
+  position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+  background: var(--bad); color: #fff; border-radius: 8px; padding: 7px 12px; font-weight: 600; font-size: 13px;
+}
+.drive-help { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13px; color: var(--ink-2); }
+@media (max-width: 640px) {
+  .hud.readout-hud { min-width: 0; left: 8px; top: 8px; padding: 8px 10px; }
+  .hud.status-hud { display: none; }
+  .cap { width: 40px; height: 40px; }
+  .cap.wide { width: 86px; }
+  .keys-hud { left: 8px; bottom: 8px; }
+  .actions-hud { right: 8px; bottom: 8px; flex-direction: column; }
+}
+
+/* Checkpoint picker */
+.ckpts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ckpts button {
+  display: grid; gap: 2px; text-align: left; padding: 8px 12px; min-width: 112px;
+}
+.ckpts button .s { font: 400 12px/1.2 "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--ink-3); }
+.ckpts button[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+.ckpts button[aria-pressed="true"] .s { color: var(--ground); opacity: 0.7; }
+
+button, select {
+  font: 500 14px/1.2 "Instrument Sans", system-ui, sans-serif;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 8px;
+  padding: 9px 13px; cursor: pointer;
+}
+button:hover, select:hover { border-color: var(--ink-3); }
+button:focus-visible, select:focus-visible, input:focus-visible, svg:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+button.primary { background: var(--ink); color: var(--ground); border-color: var(--ink); min-width: 96px; font-weight: 600; }
+button.primary:hover { opacity: 0.9; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+/* Stage */
+.stage { display: grid; grid-template-columns: minmax(0, 640px) minmax(0, 1fr); gap: 36px; align-items: start; }
+@media (max-width: 900px) { .stage { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+.video-col { display: grid; gap: 14px; }
+.screen { position: relative; border-radius: 12px; overflow: hidden; background: var(--screen); aspect-ratio: 4 / 3; max-width: 100%; }
+.screen video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.overlay {
+  position: absolute; left: 12px; top: 12px; display: flex; gap: 8px; align-items: center;
+  background: rgba(14, 16, 24, 0.72); color: #f2f3f7; border-radius: 8px; padding: 6px 10px;
+  font: 500 13px/1.2 "Instrument Sans", system-ui, sans-serif; backdrop-filter: blur(4px);
+}
+.overlay .n { font: 500 11px/1 "JetBrains Mono", ui-monospace, Menlo, monospace; color: #e5a53a; }
+.fell-flag {
+  position: absolute; right: 12px; top: 12px; background: var(--bad); color: #fff; border-radius: 8px;
+  padding: 6px 10px; font: 600 12px/1.2 "Instrument Sans", system-ui, sans-serif;
+}
+.transport { display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center; }
+.transport .time { font-size: 12px; color: var(--ink-3); min-width: 88px; text-align: right; }
+.kbd { font-size: 12px; color: var(--ink-3); }
+
+/* Readout */
+.readout { display: grid; gap: 22px; }
+.now { display: grid; gap: 2px; }
+.now .big {
+  font-family: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  font-weight: 800; font-size: clamp(30px, 4vw, 42px); line-height: 1.05; letter-spacing: -0.025em;
+}
+.instruments { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 20px; align-items: center; }
+@media (max-width: 420px) { .instruments { grid-template-columns: minmax(0, 1fr); justify-items: start; } }
+.dial svg { width: 170px; height: 170px; display: block; }
+.dial text, .yaw text { fill: var(--ink-3); font: 10px "JetBrains Mono", ui-monospace, Menlo, monospace; }
+table.vals { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.vals th { text-align: left; font-weight: 500; color: var(--ink-3); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; padding: 0 0 6px; }
+table.vals td { padding: 4px 0; border-top: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+table.vals td.c { color: var(--cmd); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; text-align: right; }
+table.vals td.a { color: var(--act); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; text-align: right; font-weight: 500; }
+table.vals th.r { text-align: right; }
+table.vals td.u { color: var(--ink-3); font-size: 12px; padding-left: 6px; }
+.yaw { display: grid; gap: 4px; }
+.yaw svg { width: 100%; height: 34px; display: block; }
+.key { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+.key span { display: inline-flex; gap: 6px; align-items: center; }
+.key i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--c); }
+.key i.dash { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+
+.segs { display: grid; gap: 2px; }
+.segs button {
+  display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: center;
+  width: 100%; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left;
+}
+.segs button:hover { background: var(--surface); }
+.segs .n { font: 500 11px/1 "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--ink-3); }
+.segs .cmdtxt { font: 400 12px/1.2 "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--ink-3); }
+.segs button.on { background: var(--surface); box-shadow: inset 0 0 0 1px var(--rule); }
+.segs button.on .n { color: var(--cmd); }
+.segs button.lost { opacity: 0.45; }
+
+/* Tracking strips */
+.strip-scroll { overflow-x: auto; }
+.strip { min-width: 640px; cursor: crosshair; }
+.strip svg { display: block; width: 100%; height: auto; touch-action: none; }
+.strip text { fill: var(--ink-3); font: 11px "JetBrains Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.strip .rowlabel { fill: var(--ink-2); font: 500 12px "Instrument Sans", system-ui, sans-serif; }
+.strip .grid line { stroke: var(--rule); stroke-width: 1; }
+.strip .segline { stroke: var(--rule); stroke-width: 1; }
+.strip .segnum { fill: var(--ink-3); }
+.strip .segnum.on { fill: var(--cmd); font-weight: 500; }
+
+/* Checkpoint table */
+.table-scroll { overflow-x: auto; }
+table.ck { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+table.ck th { text-align: right; font: 500 11px/1.3 "JetBrains Mono", ui-monospace, Menlo, monospace; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); padding: 0 12px 8px; }
+table.ck th:first-child, table.ck td:first-child { text-align: left; padding-left: 0; }
+table.ck td { text-align: right; padding: 10px 12px; border-top: 1px solid var(--rule); font-variant-numeric: tabular-nums; }
+table.ck tr.on td { background: var(--surface); }
+table.ck tr.on td:first-child { box-shadow: inset 3px 0 0 var(--cmd); padding-left: 10px; }
+table.ck button { padding: 4px 10px; font-size: 13px; }
+.ok { color: var(--good); font-weight: 600; }
+.no { color: var(--bad); font-weight: 600; }
+
+/* Stats + charts */
+.stats { display: flex; flex-wrap: wrap; gap: 14px 40px; }
+.stats div { display: grid; gap: 2px; }
+.stats .v { font: 700 24px/1.1 "Bricolage Grotesque", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.stats .v small { font: 500 13px "Instrument Sans", system-ui, sans-serif; color: var(--ink-3); margin-left: 3px; }
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+@media (max-width: 860px) { .charts { grid-template-columns: 1fr; } }
+figure { margin: 0; display: grid; gap: 10px; min-width: 0; align-content: start; }
+figure.wide { grid-column: 1 / -1; }
+figcaption { display: grid; gap: 2px; }
+figcaption .t { font-weight: 600; }
+figcaption .s { color: var(--ink-3); font-size: 13px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--ink-3); font: 11px "JetBrains Mono", ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.chart .grid line { stroke: var(--rule); stroke-width: 1; }
+.chart .axis { stroke: var(--ink-3); stroke-width: 1; }
+.chart .endlabel { font-weight: 500; fill: var(--ink); paint-order: stroke; stroke: var(--ground); stroke-width: 4px; stroke-linejoin: round; }
+.chart .cross { stroke: var(--ink-3); stroke-width: 1; }
+.chart .term { fill: var(--ink-2); font: 12px "Instrument Sans", system-ui, sans-serif; }
+.chart .ck-dot { cursor: pointer; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 2;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; line-height: 1.45; white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(10, 12, 30, 0.12);
+}
+.tip .h { color: var(--ink-3); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+
+.method { display: grid; gap: 12px; max-width: 68ch; color: var(--ink-2); }
+.method p { margin: 0; }
+.method code { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; color: var(--ink); }
+.method b { color: var(--ink); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow-row">
+      <span class="eyebrow" id="eyebrow"></span>
+      <span class="pill" id="status"></span>
+    </div>
+    <h1>Go1, on a <em>joystick</em></h1>
+    <p class="lede" id="lede"></p>
+  </header>
+
+  <section aria-labelledby="drive-h">
+    <div class="section-head">
+      <h2 id="drive-h">Drive it yourself</h2>
+      <p>This is the trained policy running live in your browser: MuJoCo physics compiled to WebAssembly and the policy network in plain JavaScript, 50 decisions a second. Nothing runs on a server.</p>
+    </div>
+    <div class="drive-stage" id="drive-stage">
+      <canvas id="drive-canvas" aria-label="Live 3D view of the Go1 robot. Use W A S D to walk, Q and E to turn."></canvas>
+      <div class="hud readout-hud" aria-live="off">
+        <table class="vals" aria-label="Live commanded and actual velocity">
+          <thead><tr><th></th><th class="r">Asked</th><th class="r">Did</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>Forward</td><td class="c" id="lc-vx">+0.00</td><td class="a" id="la-vx">+0.00</td><td class="u">m/s</td></tr>
+            <tr><td>Sideways</td><td class="c" id="lc-vy">+0.00</td><td class="a" id="la-vy">+0.00</td><td class="u">m/s</td></tr>
+            <tr><td>Turn</td><td class="c" id="lc-wz">+0.00</td><td class="a" id="la-wz">+0.00</td><td class="u">rad/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="hud status-hud">
+        <span>Sim time <b id="l-time">0.0 s</b></span>
+        <span>Speed <b id="l-rtf">1.00×</b> real time</span>
+        <span>Falls <b id="l-falls">0</b></span>
+      </div>
+      <div class="keys-hud" id="keys" aria-label="On-screen controls">
+        <div class="keyrow">
+          <button type="button" class="cap" data-k="q" aria-label="Turn left">Q<small>turn</small></button>
+          <button type="button" class="cap" data-k="w" aria-label="Walk forward">W<small>fwd</small></button>
+          <button type="button" class="cap" data-k="e" aria-label="Turn right">E<small>turn</small></button>
+        </div>
+        <div class="keyrow">
+          <button type="button" class="cap" data-k="a" aria-label="Step left">A<small>left</small></button>
+          <button type="button" class="cap" data-k="s" aria-label="Walk backward">S<small>back</small></button>
+          <button type="button" class="cap" data-k="d" aria-label="Step right">D<small>right</small></button>
+        </div>
+        <div class="keyrow">
+          <button type="button" class="cap wide" data-k="shift" aria-label="Run (hold with W)">Shift<small>run</small></button>
+        </div>
+      </div>
+      <div class="actions-hud">
+        <button type="button" id="l-shove">Shove<kbd>F</kbd></button>
+        <button type="button" id="l-reset">Reset<kbd>R</kbd></button>
+        <button type="button" id="l-pause">Pause<kbd>P</kbd></button>
+      </div>
+      <div class="fell-banner" id="l-fell" hidden>Fell over. Resetting…</div>
+      <div class="loading" id="l-loading">Loading…</div>
+    </div>
+    <div class="drive-help">
+      <span><kbd>W</kbd><kbd>S</kbd> forward / back</span>
+      <span><kbd>A</kbd><kbd>D</kbd> sidestep</span>
+      <span><kbd>Q</kbd><kbd>E</kbd> turn</span>
+      <span>hold <kbd>Shift</kbd> to run</span>
+      <span>drag to orbit, scroll to zoom</span>
+      <span><span style="color:var(--cmd)">amber arrow</span> = joystick, <span style="color:var(--act)">indigo arrow</span> = actual velocity</span>
+    </div>
+  </section>
+
+  <section aria-label="Recorded joystick demo">
+    <div class="section-head">
+      <h2>Recorded demo</h2>
+      <p>The same scripted joystick run on each saved checkpoint, rendered from the training simulator. Pick a checkpoint to watch the gait develop.</p>
+    </div>
+    <div class="ckpts" id="ckpts" role="group" aria-label="Checkpoint"></div>
+    <div class="stage">
+      <div class="video-col">
+        <div class="screen">
+          <video id="vid" muted playsinline autoplay preload="auto" aria-label="Rendered demo of the robot following joystick commands"></video>
+          <div class="overlay" id="overlay"><span class="n" id="ov-n"></span><span id="ov-label"></span></div>
+          <div class="fell-flag" id="fell" hidden>Fell over</div>
+        </div>
+        <div class="transport">
+          <button class="primary" id="play" type="button">Pause</button>
+          <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Demo time">
+          <select id="speed" aria-label="Playback speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+          </select>
+          <span class="time mono" id="time">0.0 s</span>
+        </div>
+        <div class="kbd">Space plays or pauses. Arrow keys jump between segments. Click the strips below to seek.</div>
+      </div>
+
+      <div class="readout">
+        <div class="now">
+          <span class="label">Joystick command</span>
+          <span class="big" id="now-label"></span>
+        </div>
+        <div class="instruments">
+          <div class="dial" id="dial"></div>
+          <div style="display:grid;gap:14px;min-width:0">
+            <table class="vals" aria-label="Commanded and actual velocity">
+              <thead><tr><th></th><th class="r">Asked</th><th class="r">Did</th><th></th></tr></thead>
+              <tbody>
+                <tr><td>Forward</td><td class="c" id="c-vx"></td><td class="a" id="a-vx"></td><td class="u">m/s</td></tr>
+                <tr><td>Sideways</td><td class="c" id="c-vy"></td><td class="a" id="a-vy"></td><td class="u">m/s</td></tr>
+                <tr><td>Turn</td><td class="c" id="c-wz"></td><td class="a" id="a-wz"></td><td class="u">rad/s</td></tr>
+              </tbody>
+            </table>
+            <div class="yaw" id="yaw"></div>
+          </div>
+        </div>
+        <div class="key">
+          <span style="--c:var(--cmd)"><i class="dash"></i>asked for</span>
+          <span style="--c:var(--act)"><i></i>what the robot did</span>
+        </div>
+        <div>
+          <div class="label" style="margin-bottom:6px">Demo script</div>
+          <div class="segs" id="segs"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="track-h">
+    <div class="section-head">
+      <h2 id="track-h">Asked for vs. delivered</h2>
+      <p>Body velocity in the robot's own frame, sampled every control step (50 Hz). The amber steps are the joystick; the indigo line is what the policy actually achieved.</p>
+    </div>
+    <div class="strip-scroll"><div class="strip" id="strip"></div></div>
+  </section>
+
+  <section aria-labelledby="ck-h">
+    <div class="section-head">
+      <h2 id="ck-h">Watch it learn</h2>
+      <p id="ck-sub"></p>
+    </div>
+    <div class="table-scroll"><table class="ck" id="cktable"></table></div>
+  </section>
+
+  <section aria-labelledby="train-h">
+    <div class="section-head">
+      <h2 id="train-h">How it trained</h2>
+      <p id="train-sub"></p>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="charts">
+      <figure>
+        <figcaption><span class="t">Evaluation reward per episode</span><span class="s">128 robots, random joystick commands, mean ± 1 std. Amber rings are the checkpoints above; click one to load it.</span></figcaption>
+        <div class="chart" id="chart-reward"></div>
+      </figure>
+      <figure>
+        <figcaption><span class="t">Simulation throughput</span><span class="s">Environment steps per second, physics and policy both on the GPU. Dips are evaluation pauses.</span></figcaption>
+        <div class="chart" id="chart-sps"></div>
+      </figure>
+      <figure class="wide">
+        <figcaption><span class="t">Where the reward comes from</span><span class="s" id="terms-sub"></span></figcaption>
+        <div class="chart" id="chart-terms"></div>
+      </figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="method-h">
+    <div class="section-head"><h2 id="method-h">How it works</h2></div>
+    <div class="method" id="method"></div>
+  </section>
+</div>
+
+<script type="module">
+  const $ = id => document.getElementById(id);
+  const loading = $("l-loading");
+  const sgn = v => (v > 0.004 ? "+" : v < -0.004 ? "−" : " ") + Math.abs(v).toFixed(2);
+  const held = new Set();
+  let sim = null;
+
+  function applyKeys() {
+    if (!sim) return;
+    const run = held.has("shift");
+    const vx = (held.has("w") ? (run ? 1.5 : 1.0) : 0) - (held.has("s") ? 0.8 : 0);
+    const vy = (held.has("a") ? 0.6 : 0) - (held.has("d") ? 0.6 : 0);
+    const wz = (held.has("q") ? 1.0 : 0) - (held.has("e") ? 1.0 : 0);
+    sim.setTarget(vx, vy, wz);
+    document.querySelectorAll("#keys .cap").forEach(c => c.classList.toggle("on", held.has(c.dataset.k)));
+  }
+  const DRIVE = new Set(["w", "a", "s", "d", "q", "e", "shift"]);
+  const keyName = ev => (ev.key === "Shift" ? "shift" : ev.key.toLowerCase());
+  document.addEventListener("keydown", ev => {
+    if (ev.target.closest("input, select, textarea") || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const k = keyName(ev);
+    if (DRIVE.has(k)) { held.add(k); applyKeys(); ev.preventDefault(); }
+    else if (k === "r" && sim) sim.reset();
+    else if (k === "f" && sim) sim.shove();
+    else if (k === "p") $("l-pause").click();
+  });
+  document.addEventListener("keyup", ev => { const k = keyName(ev); if (held.delete(k)) applyKeys(); });
+  window.addEventListener("blur", () => { held.clear(); applyKeys(); });
+  document.querySelectorAll("#keys .cap").forEach(c => {
+    const k = c.dataset.k;
+    c.addEventListener("pointerdown", ev => { ev.preventDefault(); c.setPointerCapture(ev.pointerId); held.add(k); applyKeys(); });
+    const up = () => { held.delete(k); applyKeys(); };
+    c.addEventListener("pointerup", up);
+    c.addEventListener("pointercancel", up);
+  });
+  let paused = false;
+  $("l-pause").addEventListener("click", () => {
+    if (!sim) return;
+    paused = !paused;
+    sim.setPaused(paused);
+    $("l-pause").firstChild.textContent = paused ? "Resume" : "Pause";
+  });
+  $("l-reset").addEventListener("click", () => sim && sim.reset());
+  $("l-shove").addEventListener("click", () => sim && sim.shove());
+
+  const ids = [["lc-vx", "la-vx"], ["lc-vy", "la-vy"], ["lc-wz", "la-wz"]].map(([a, b]) => [$(a), $(b)]);
+  let tick = 0;
+  function onFrame(st) {
+    if (++tick % 4) return;  // text readouts at ~15 Hz
+    ids.forEach(([c, a], i) => { c.textContent = sgn(st.cmd[i]); a.textContent = sgn(st.actual[i]); });
+    $("l-time").textContent = st.simTime.toFixed(1) + " s";
+    $("l-rtf").textContent = st.rtf.toFixed(2) + "×";
+    $("l-falls").textContent = st.falls;
+    $("l-fell").hidden = !st.fallen;
+  }
+  try {
+    const { startSim } = await import("./web/sim.js");
+    sim = await startSim({
+      canvas: $("drive-canvas"),
+      onStatus: msg => { loading.hidden = !msg; if (msg) loading.textContent = msg; },
+      onFrame,
+    });
+    applyKeys();
+  } catch (err) {
+    console.error(err);
+    loading.hidden = false;
+    loading.classList.add("err");
+    loading.textContent = `The live simulator could not start: ${err.message || err}. The recorded demos below still work.`;
+  }
+</script>
+<script type="application/json" id="data">/*__DATA__*/</script>
+<script>
+(() => {
+  const D = JSON.parse(document.getElementById("data").textContent);
+  const $ = id => document.getElementById(id);
+  const ns = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs, parent) => {
+    const n = document.createElementNS(ns, tag);
+    for (const [a, v] of Object.entries(attrs)) n.setAttribute(a, v);
+    if (parent) parent.appendChild(n);
+    return n;
+  };
+  const fmt = n => Math.round(n).toLocaleString("en-US");
+  const mfmt = s => s >= 1e6 ? (s / 1e6).toFixed(s >= 1e7 ? 0 : 1).replace(/\.0$/, "") + "M" : s >= 1e3 ? Math.round(s / 1e3) + "k" : String(s);
+  const sgn = v => (v > 0.004 ? "+" : v < -0.004 ? "−" : " ") + Math.abs(v).toFixed(2);
+  const minutes = s => s < 90 ? `${Math.round(s)} s` : `${(s / 60).toFixed(s < 600 ? 1 : 0)} min`;
+  const pretty = n => n.replace(/_/g, " ");
+
+  const E = D.eval.filter(r => r[0] > 0);       // [step, reward, std, wall_s]
+  const T = D.train;                              // [step, sps, reward, wall_s]
+  const lastStep = E.length ? E.at(-1)[0] : 0;
+  const xMaxSteps = Math.max(D.num_timesteps, lastStep);  // brax rounds up to whole epochs
+  const done = lastStep >= D.num_timesteps * 0.98;
+  const wallAt = step => {
+    let best = null;
+    for (const r of D.eval) if (!best || Math.abs(r[0] - step) < Math.abs(best[0] - step)) best = r;
+    return best ? best[3] : 0;
+  };
+  const spsVals = T.slice(1).map(r => r[1]).filter(v => v > 0).sort((a, b) => a - b);
+  const medSps = spsVals.length ? spsVals[Math.floor(spsVals.length / 2)] : 0;
+
+  // ---- Header
+  $("eyebrow").textContent = `${D.env} · Brax PPO · ${fmt(D.num_envs)} robots in parallel on one ${D.gpu}`;
+  const st = $("status");
+  st.className = "pill " + (done ? "done" : "live");
+  st.textContent = done ? "Training complete" : `Training · ${Math.min(99, Math.round(100 * lastStep / D.num_timesteps))}%`;
+  const final = D.demos.at(-1);
+  $("lede").innerHTML =
+    `A Unitree Go1 quadruped that learned to walk from nothing but trial and error, ` +
+    `in <strong>${minutes(D.elapsed_s)}</strong> of simulated practice: <strong>${mfmt(lastStep)} steps</strong> ` +
+    `(about ${Math.round(lastStep * 0.02 / 86400)} robot-days) at ${fmt(medSps)} steps per second. ` +
+    `Drive the ${done ? "final" : "latest"} policy yourself with the keyboard, then see how it learned.`;
+
+  // ---- Stage state
+  let demo = final;
+  let idx = 0;
+  const vid = $("vid");
+
+  // ---- Checkpoint picker
+  function ckLabel(d) { return `${mfmt(d.env_steps)} steps`; }
+  $("ckpts").innerHTML = D.demos.map((d, i) =>
+    `<button type="button" data-i="${i}" aria-pressed="false"><span>${ckLabel(d)}</span>` +
+    `<span class="s">${i === D.demos.length - 1 && done ? "final · " : ""}${minutes(wallAt(d.env_steps))} in</span></button>`).join("");
+  $("ckpts").addEventListener("click", ev => {
+    const b = ev.target.closest("button[data-i]");
+    if (b) selectDemo(+b.dataset.i, true);
+  });
+
+  // ---- Dial (linear velocity, top-down: forward is up, left is left)
+  const VMAX = 1.6, R = 72;
+  const dial = el("svg", { viewBox: "-85 -85 170 170", role: "img", "aria-label": "Commanded and actual body velocity, top-down" });
+  for (const v of [0.5, 1.0, 1.5]) {
+    el("circle", { cx: 0, cy: 0, r: R * v / VMAX, fill: "none", stroke: "var(--rule)", "stroke-width": 1 }, dial);
+    el("text", { x: 3, y: -R * v / VMAX - 2 }, dial).textContent = v.toFixed(1);
+  }
+  el("line", { x1: -R, x2: R, y1: 0, y2: 0, stroke: "var(--rule)" }, dial);
+  el("line", { y1: -R, y2: R, x1: 0, x2: 0, stroke: "var(--rule)" }, dial);
+  el("text", { x: 0, y: -R - 4, "text-anchor": "middle" }, dial).textContent = "fwd";
+  el("text", { x: -R - 2, y: 3, "text-anchor": "end" }, dial).textContent = "L";
+  el("text", { x: R + 2, y: 3 }, dial).textContent = "R";
+  const trail = el("polyline", { fill: "none", stroke: "var(--act)", "stroke-width": 1.5, "stroke-opacity": 0.35, "stroke-linejoin": "round" }, dial);
+  const cmdLine = el("line", { x1: 0, y1: 0, stroke: "var(--cmd)", "stroke-width": 2, "stroke-dasharray": "4 3" }, dial);
+  const cmdDot = el("circle", { r: 6, fill: "var(--surface)", stroke: "var(--cmd)", "stroke-width": 2 }, dial);
+  const actLine = el("line", { x1: 0, y1: 0, stroke: "var(--act)", "stroke-width": 2.5, "stroke-linecap": "round" }, dial);
+  const actDot = el("circle", { r: 4.5, fill: "var(--act)" }, dial);
+  el("text", { x: 0, y: 82, "text-anchor": "middle" }, dial).textContent = "m/s";
+  $("dial").appendChild(dial);
+  const dxy = (vx, vy) => [-vy * R / VMAX, -vx * R / VMAX];
+
+  // ---- Yaw gauge (left turns on the left)
+  const YMAX = 1.5, YW = 300;
+  const yaw = el("svg", { viewBox: `0 0 ${YW} 34`, preserveAspectRatio: "none", role: "img", "aria-label": "Turn rate" });
+  const yx = w => YW / 2 - (Math.max(-YMAX, Math.min(YMAX, w)) / YMAX) * (YW / 2 - 8);
+  el("rect", { x: 8, y: 11, width: YW - 16, height: 6, rx: 3, fill: "var(--rule)" }, yaw);
+  el("line", { x1: YW / 2, x2: YW / 2, y1: 7, y2: 21, stroke: "var(--ink-3)" }, yaw);
+  const yawCmd = el("rect", { y: 5, width: 3, height: 18, rx: 1.5, fill: "var(--cmd)" }, yaw);
+  const yawAct = el("circle", { cy: 14, r: 5.5, fill: "var(--act)", stroke: "var(--surface)", "stroke-width": 2 }, yaw);
+  const yawLbl = document.createElement("div");
+  yawLbl.className = "key";
+  yawLbl.style.justifyContent = "space-between";
+  yawLbl.innerHTML = `<span>↺ turn left</span><span>turn right ↻</span>`;
+  $("yaw").append(yaw, yawLbl);
+
+  // ---- Segments list
+  function segAt(t) {
+    const S = demo.segments;
+    for (let i = S.length - 1; i >= 0; i--) if (t >= S[i].start_s - 1e-6) return i;
+    return 0;
+  }
+  function renderSegs() {
+    const stopT = demo.fell_at;
+    $("segs").innerHTML = demo.segments.map((s, i) =>
+      `<button type="button" data-i="${i}" class="${stopT !== null && s.start_s > stopT ? "lost" : ""}">` +
+      `<span class="n">${i + 1}</span><span>${s.label}</span>` +
+      `<span class="cmdtxt">${s.command.map(v => v.toFixed(1)).join(" ")}</span></button>`).join("");
+  }
+  $("segs").addEventListener("click", ev => {
+    const b = ev.target.closest("button[data-i]");
+    if (b) seekTime(demo.segments[+b.dataset.i].start_s + 0.001);
+  });
+
+  // ---- Tracking strips
+  const SW = 1000, SL = 118, SR = 14, ST = 26, RH = 96, RG = 20, SB = 28;
+  const rows = [
+    { key: "vx", c: 0, name: "Forward", unit: "m/s" },
+    { key: "vy", c: 1, name: "Sideways", unit: "m/s" },
+    { key: "wz", c: 2, name: "Turn", unit: "rad/s" },
+  ];
+  const SH = ST + rows.length * RH + (rows.length - 1) * RG + SB;
+  let stripSvg, playhead, segNums = [];
+  function renderStrip() {
+    const tr = demo.trace, N = tr.vx.length, dt = demo.dt;
+    const tEnd = demo.segments.at(-1).end_s;
+    const sx = t => SL + (t / tEnd) * (SW - SL - SR);
+    const svg = el("svg", { viewBox: `0 0 ${SW} ${SH}`, role: "img", tabindex: "0",
+      "aria-label": "Commanded vs actual velocity over the demo; click to seek" });
+    // Segment bands
+    demo.segments.forEach((s, i) => {
+      if (i % 2) el("rect", { x: sx(s.start_s), y: ST - 4, width: sx(s.end_s) - sx(s.start_s), height: SH - ST - SB + 4, fill: "var(--seg-alt)" }, svg);
+    });
+    segNums = demo.segments.map((s, i) => {
+      const t = el("text", { class: "segnum", x: (sx(s.start_s) + sx(s.end_s)) / 2, y: 14, "text-anchor": "middle" }, svg);
+      t.textContent = i + 1;
+      return t;
+    });
+    rows.forEach((r, ri) => {
+      const top = ST + ri * (RH + RG);
+      const vals = tr[r.key], cmds = tr.cmd.map(c => c[r.c]);
+      let lim = Math.max(0.5, ...vals.map(Math.abs), ...cmds.map(Math.abs));
+      lim = Math.ceil(lim * 2) / 2;
+      const sy = v => top + RH / 2 - (v / lim) * (RH / 2);
+      const g = el("g", { class: "grid" }, svg);
+      for (const v of [-lim, 0, lim]) {
+        el("line", { x1: SL, x2: SW - SR, y1: sy(v), y2: sy(v), "stroke-dasharray": v === 0 ? "" : "2 4" }, g);
+        el("text", { x: SL - 8, y: sy(v) + 4, "text-anchor": "end" }, svg).textContent = (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
+      }
+      const lbl = el("text", { class: "rowlabel", x: 0, y: top + 12 }, svg);
+      lbl.textContent = r.name;
+      el("text", { x: 0, y: top + 28 }, svg).textContent = r.unit;
+      // Command as a step line
+      let d = `M${sx(0).toFixed(1)},${sy(cmds[0]).toFixed(1)}`;
+      for (let i = 1; i < N; i++) {
+        if (cmds[i] !== cmds[i - 1]) d += `H${sx(i * dt).toFixed(1)}V${sy(cmds[i]).toFixed(1)}`;
+      }
+      d += `H${sx(N * dt).toFixed(1)}`;
+      el("path", { d, fill: "none", stroke: "var(--cmd)", "stroke-width": 2, "stroke-dasharray": "5 3", "stroke-linejoin": "round" }, svg);
+      const pts = vals.map((v, i) => `${sx(i * dt).toFixed(1)},${sy(v).toFixed(1)}`);
+      el("path", { d: "M" + pts.join("L"), fill: "none", stroke: "var(--act)", "stroke-width": 1.5, "stroke-linejoin": "round" }, svg);
+    });
+    // Time axis
+    for (let t = 0; t <= tEnd + 1e-6; t += 4) {
+      el("text", { x: sx(t), y: SH - 8, "text-anchor": "middle" }, svg).textContent = t + " s";
+    }
+    if (demo.fell_at !== null) {
+      const x = sx(demo.fell_at);
+      el("line", { x1: x, x2: x, y1: ST - 4, y2: SH - SB, stroke: "var(--bad)", "stroke-width": 2 }, svg);
+      el("text", { x: x + 6, y: SH - SB - 6, style: "fill:var(--bad)" }, svg).textContent = "fell";
+    }
+    playhead = el("line", { y1: ST - 4, y2: SH - SB, stroke: "var(--ink)", "stroke-width": 1.5 }, svg);
+    const seekFromEvent = ev => {
+      const rect = svg.getBoundingClientRect();
+      const x = ((ev.clientX - rect.left) / rect.width) * SW;
+      seekTime(Math.max(0, Math.min(tEnd, ((x - SL) / (SW - SL - SR)) * tEnd)));
+    };
+    let dragging = false;
+    svg.addEventListener("pointerdown", ev => { dragging = true; svg.setPointerCapture(ev.pointerId); seekFromEvent(ev); });
+    svg.addEventListener("pointermove", ev => dragging && seekFromEvent(ev));
+    svg.addEventListener("pointerup", () => { dragging = false; });
+    $("strip").replaceChildren(svg);
+    stripSvg = { svg, sx };
+  }
+
+  // ---- Readout update
+  const cIds = ["c-vx", "c-vy", "c-wz"].map($), aIds = ["a-vx", "a-vy", "a-wz"].map($);
+  let lastSeg = -1;
+  function update(force) {
+    const tr = demo.trace, N = tr.vx.length;
+    const t = vid.currentTime || 0;
+    const i = Math.max(0, Math.min(N - 1, Math.floor(t / demo.dt)));
+    if (i === idx && !force) return;
+    idx = i;
+    const c = tr.cmd[i], a = [tr.vx[i], tr.vy[i], tr.wz[i]];
+    c.forEach((v, j) => { cIds[j].textContent = sgn(v); aIds[j].textContent = sgn(a[j]); });
+    const [cx, cy] = dxy(c[0], c[1]), [ax, ay] = dxy(a[0], a[1]);
+    cmdLine.setAttribute("x2", cx); cmdLine.setAttribute("y2", cy);
+    cmdDot.setAttribute("cx", cx); cmdDot.setAttribute("cy", cy);
+    actLine.setAttribute("x2", ax); actLine.setAttribute("y2", ay);
+    actDot.setAttribute("cx", ax); actDot.setAttribute("cy", ay);
+    const tp = [];
+    for (let k = Math.max(0, i - 40); k <= i; k++) { const [px, py] = dxy(tr.vx[k], tr.vy[k]); tp.push(px.toFixed(1) + "," + py.toFixed(1)); }
+    trail.setAttribute("points", tp.join(" "));
+    yawCmd.setAttribute("x", yx(c[2]) - 1.5);
+    yawAct.setAttribute("cx", yx(a[2]));
+    const s = segAt(i * demo.dt);
+    if (s !== lastSeg || force) {
+      lastSeg = s;
+      const seg = demo.segments[s];
+      $("now-label").textContent = seg.label;
+      $("ov-n").textContent = `${s + 1}/${demo.segments.length}`;
+      $("ov-label").textContent = seg.label;
+      [...$("segs").children].forEach((b, k) => b.classList.toggle("on", k === s));
+      segNums.forEach((n, k) => n.classList.toggle("on", k === s));
+    }
+    $("fell").hidden = !(demo.fell_at !== null && i * demo.dt >= demo.fell_at - demo.dt);
+    if (stripSvg) {
+      const x = stripSvg.sx(i * demo.dt);
+      playhead.setAttribute("x1", x); playhead.setAttribute("x2", x);
+    }
+    const dur = vid.duration || N * demo.dt;
+    $("scrub").value = Math.round((t / dur) * 1000);
+    $("time").textContent = `${t.toFixed(1)} / ${dur.toFixed(1)} s`;
+  }
+  function loop() { update(false); requestAnimationFrame(loop); }
+
+  function seekTime(t) {
+    vid.currentTime = t;
+    update(true);
+  }
+
+  // ---- Transport
+  const playBtn = $("play");
+  const syncBtn = () => { playBtn.textContent = vid.paused ? "Play" : "Pause"; };
+  vid.addEventListener("play", syncBtn);
+  vid.addEventListener("pause", syncBtn);
+  vid.addEventListener("seeked", () => update(true));
+  vid.addEventListener("ended", () => { vid.currentTime = 0; vid.play().catch(() => {}); });
+  playBtn.addEventListener("click", () => (vid.paused ? vid.play().catch(() => {}) : vid.pause()));
+  $("speed").addEventListener("change", ev => { vid.playbackRate = +ev.target.value; });
+  $("scrub").addEventListener("input", ev => {
+    const dur = vid.duration || demo.trace.vx.length * demo.dt;
+    seekTime((+ev.target.value / 1000) * dur);
+  });
+  document.addEventListener("keydown", ev => {
+    if (ev.target.closest("select, input")) return;
+    if (ev.code === "Space") { ev.preventDefault(); playBtn.click(); }
+    else if (ev.key === "ArrowRight" || ev.key === "ArrowLeft") {
+      ev.preventDefault();
+      const s = Math.max(0, Math.min(demo.segments.length - 1, segAt(vid.currentTime) + (ev.key === "ArrowRight" ? 1 : -1)));
+      seekTime(demo.segments[s].start_s + 0.001);
+    }
+  });
+
+  function selectDemo(i, keepTime) {
+    const t = keepTime ? vid.currentTime : 0;
+    const wasPaused = vid.paused && keepTime;
+    demo = D.demos[i];
+    [...$("ckpts").children].forEach((b, k) => b.setAttribute("aria-pressed", String(k === i)));
+    [...$("cktable").querySelectorAll("tbody tr")].forEach((r, k) => r.classList.toggle("on", k === i));
+    renderSegs();
+    renderStrip();
+    lastSeg = -1;
+    vid.src = demo.video;
+    vid.playbackRate = +$("speed").value;
+    vid.addEventListener("loadedmetadata", () => {
+      vid.currentTime = Math.min(t, vid.duration - 0.05);
+      if (!wasPaused) vid.play().catch(() => {});
+      update(true);
+    }, { once: true });
+    update(true);
+  }
+
+  // ---- Checkpoint table
+  $("ck-sub").textContent =
+    `Each checkpoint runs the same ${Math.round(D.demos[0]?.segments.at(-1).end_s || 0)}-second joystick script. ` +
+    `Reward and survival come from 128 separate robots given random commands for a full 20-second episode. ` +
+    `Tracking error is the root-mean-square gap between asked-for and delivered velocity over the script.`;
+  $("cktable").innerHTML =
+    `<thead><tr><th>Checkpoint</th><th>Training time</th><th>Reward</th><th>Stayed upright</th><th>Speed error</th><th>Turn error</th><th>Script</th><th></th></tr></thead><tbody>` +
+    D.demos.map((d, i) => `<tr>
+      <td><b>${mfmt(d.env_steps)}</b> steps</td>
+      <td>${minutes(wallAt(d.env_steps))}</td>
+      <td>${d.reward_mean != null ? d.reward_mean.toFixed(1) + ` <span style="color:var(--ink-3)">± ${d.reward_std.toFixed(1)}</span>` : "–"}</td>
+      <td>${d.survival != null ? Math.round(d.survival * 100) + "%" : "–"}</td>
+      <td>${d.lin_err.toFixed(2)} <span style="color:var(--ink-3)">m/s</span></td>
+      <td>${d.yaw_err.toFixed(2)} <span style="color:var(--ink-3)">rad/s</span></td>
+      <td>${d.fell_at === null ? '<span class="ok">completed</span>' : `<span class="no">fell at ${d.fell_at.toFixed(1)} s</span>`}</td>
+      <td><button type="button" data-i="${i}">Watch</button></td></tr>`).join("") + "</tbody>";
+  $("cktable").addEventListener("click", ev => {
+    const b = ev.target.closest("button[data-i]");
+    if (b) { selectDemo(+b.dataset.i, false); $("ckpts").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  });
+
+  // ---- Training stats
+  const jit = D.jit_time_s;
+  $("train-sub").textContent =
+    `PPO with ${fmt(D.num_envs)} simulated robots stepping in lockstep on the GPU` +
+    (D.dr ? ", each with randomised friction, mass and joint properties so the gait does not depend on one exact robot." : ".");
+  $("stats").innerHTML = [
+    ["Environment steps", mfmt(lastStep), ""],
+    ["Wall-clock time", (D.elapsed_s / 60).toFixed(0), "min"],
+    ["Robots in parallel", fmt(D.num_envs), ""],
+    ["Median throughput", fmt(medSps / 1000), "k steps/s"],
+    ["Experience", Math.round(lastStep * 0.02 / 86400), "robot-days"],
+  ].map(([l, v, u]) => `<div><span class="label">${l}</span><span class="v">${v}${u ? `<small>${u}</small>` : ""}</span></div>`).join("");
+
+  // ---- Generic line chart
+  const W = 520, H = 250, M = { l: 52, r: 20, t: 14, b: 30 };
+  // Round axis: tick step is 1, 2 or 5 x 10^k, aiming for about 4 intervals.
+  function niceScale(v) {
+    if (v <= 0) return { max: 1, step: 0.25 };
+    const raw = v / 4, p = 10 ** Math.floor(Math.log10(raw));
+    const step = [1, 2, 5, 10].map(m => m * p).find(s => s >= raw);
+    return { max: Math.ceil(v / step - 1e-9) * step, step };
+  }
+  function lineChart(host, { pts, yMax, yStep, band, yFmt, tipFmt, color, fill, marks, median }) {
+    const xMax = xMaxSteps;
+    const x = s => M.l + (s / xMax) * (W - M.l - M.r);
+    const y = v => H - M.b - (v / yMax) * (H - M.t - M.b);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" });
+    const g = el("g", { class: "grid" }, svg);
+    for (let v = 0; v <= yMax + 1e-9; v += yStep) {
+      el("line", { x1: M.l, x2: W - M.r, y1: y(v), y2: y(v) }, g);
+      el("text", { x: M.l - 8, y: y(v) + 4, "text-anchor": "end" }, svg).textContent = yFmt(v);
+    }
+    el("line", { class: "axis", x1: M.l, x2: W - M.r, y1: y(0), y2: y(0) }, svg);
+    const xs = niceScale(xMax).step;
+    for (let s = 0; s <= xMax + 1; s += xs) {
+      el("text", { x: x(s), y: H - M.b + 18, "text-anchor": "middle" }, svg).textContent = s === 0 ? "0" : mfmt(s);
+    }
+    if (!pts.length) { host.appendChild(svg); return; }
+    if (band) {
+      const up = pts.map(p => `${x(p[0]).toFixed(1)},${y(Math.min(yMax, p[1] + p[2])).toFixed(1)}`);
+      const dn = pts.slice().reverse().map(p => `${x(p[0]).toFixed(1)},${y(Math.max(0, p[1] - p[2])).toFixed(1)}`);
+      el("path", { d: `M${up.join("L")}L${dn.join("L")}Z`, fill: "var(--act-fill)" }, svg);
+    } else if (fill) {
+      const line = pts.map(p => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`);
+      el("path", { d: `M${x(pts[0][0])},${y(0)}L${line.join("L")}L${x(pts.at(-1)[0])},${y(0)}Z`, fill: "var(--act-fill)" }, svg);
+    }
+    if (median) {
+      el("line", { x1: M.l, x2: W - M.r, y1: y(median), y2: y(median), stroke: "var(--ink-3)", "stroke-dasharray": "3 3" }, svg);
+      el("text", { x: W - M.r, y: y(median) - 6, "text-anchor": "end", class: "endlabel" }, svg).textContent = `median ${fmt(median / 1000)}k/s`;
+    }
+    el("path", { d: "M" + pts.map(p => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("L"), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    const last = pts.at(-1);
+    el("circle", { cx: x(last[0]), cy: y(last[1]), r: 4, fill: color, stroke: "var(--ground)", "stroke-width": 2 }, svg);
+    const cross = el("line", { class: "cross", y1: M.t, y2: y(0), visibility: "hidden" }, svg);
+    const dot = el("circle", { r: 4, fill: color, stroke: "var(--ground)", "stroke-width": 2, visibility: "hidden" }, svg);
+    const hit = el("rect", { x: M.l, y: M.t, width: W - M.l - M.r, height: H - M.t - M.b, fill: "transparent" }, svg);
+    if (marks) {
+      for (const mk of marks) {
+        const c = el("circle", { class: "ck-dot", cx: x(mk.step), cy: y(mk.v), r: 7, fill: "var(--surface)", stroke: "var(--cmd)", "stroke-width": 2.5, tabindex: "0", role: "button", "aria-label": `Load checkpoint at ${mfmt(mk.step)} steps` }, svg);
+        c.addEventListener("click", () => { selectDemo(mk.i, false); $("ckpts").scrollIntoView({ behavior: "smooth", block: "start" }); });
+        c.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); c.dispatchEvent(new Event("click")); } });
+      }
+    }
+    host.appendChild(svg);
+    const tip = document.createElement("div");
+    tip.className = "tip"; tip.hidden = true;
+    host.appendChild(tip);
+    hit.addEventListener("pointermove", ev => {
+      const rect = svg.getBoundingClientRect();
+      const s = (((ev.clientX - rect.left) / rect.width) * W - M.l) / (W - M.l - M.r) * xMaxSteps;
+      let b = pts[0];
+      for (const p of pts) if (Math.abs(p[0] - s) < Math.abs(b[0] - s)) b = p;
+      cross.setAttribute("x1", x(b[0])); cross.setAttribute("x2", x(b[0])); cross.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", x(b[0])); dot.setAttribute("cy", y(b[1])); dot.setAttribute("visibility", "visible");
+      tip.innerHTML = tipFmt(b);
+      tip.hidden = false;
+      const px = (x(b[0]) / W) * rect.width;
+      tip.style.left = (px + 14 + tip.offsetWidth > rect.width ? px - tip.offsetWidth - 14 : px + 14) + "px";
+      tip.style.top = "8px";
+    });
+    hit.addEventListener("pointerleave", () => {
+      tip.hidden = true; cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden");
+    });
+  }
+
+  const rs = niceScale(Math.max(1, ...E.map(r => r[1] + r[2])));
+  lineChart($("chart-reward"), {
+    pts: D.eval.map(r => [r[0], r[1], r[2], r[3]]), yMax: rs.max, yStep: rs.step, band: true, color: "var(--act)",
+    yFmt: v => fmt(v),
+    tipFmt: p => `<div class="h">${mfmt(p[0])} steps · ${minutes(p[3])}</div><div>Reward <b>${p[1].toFixed(1)}</b> ± ${p[2].toFixed(1)}</div>`,
+    marks: D.demos.map((d, i) => {
+      const r = D.eval.reduce((b, e) => Math.abs(e[0] - d.env_steps) < Math.abs(b[0] - d.env_steps) ? e : b, D.eval[0]);
+      return { step: d.env_steps, v: r[1], i };
+    }),
+  });
+  const sp = T.slice(1).filter(r => r[1] > 0);
+  const ss = niceScale(Math.max(1, ...sp.map(r => r[1])));
+  lineChart($("chart-sps"), {
+    pts: sp.map(r => [r[0], r[1], 0, r[3]]), yMax: ss.max, yStep: ss.step, fill: true, color: "var(--act)",
+    yFmt: v => (v === 0 ? "0" : fmt(v / 1000) + "k"), median: medSps,
+    tipFmt: p => `<div class="h">${mfmt(p[0])} steps · ${minutes(p[3])}</div><div><b>${fmt(p[1])}</b> steps/s</div>`,
+  });
+
+  // ---- Reward terms: diverging bars, final eval (solid) vs first eval (outline)
+  (() => {
+    const tm = D.terms;
+    const host = $("chart-terms");
+    if (!tm.names.length) { host.textContent = "No evaluation yet."; return; }
+    $("terms-sub").textContent =
+      `Each reward term summed over one evaluation episode. Solid bars are the latest evaluation (${mfmt(tm.last_step)} steps); ` +
+      `outlines are the first (${mfmt(tm.first_step)} steps). Tracking terms pay the robot for following the joystick; the rest are penalties that shape a clean gait.`;
+    const order = tm.names.map((n, i) => i).sort((a, b) => tm.last[b] - tm.last[a]);
+    const TW = 1000, rowH = 24, TL = 170, TR = 60, TT = 8;
+    const TH = TT + order.length * rowH + 26;
+    const lo = Math.min(0, ...tm.last, ...tm.first), hi = Math.max(0, ...tm.last, ...tm.first);
+    const sc = niceScale(Math.max(Math.abs(lo), Math.abs(hi)));
+    const xMin = lo < 0 ? -Math.ceil(-lo / sc.step) * sc.step : 0;
+    const xMaxV = hi > 0 ? Math.ceil(hi / sc.step) * sc.step : 0;
+    const x = v => TL + ((v - xMin) / (xMaxV - xMin)) * (TW - TL - TR);
+    const svg = el("svg", { viewBox: `0 0 ${TW} ${TH}`, role: "img", "aria-label": "Reward terms, first vs latest evaluation" });
+    const g = el("g", { class: "grid" }, svg);
+    for (let v = xMin; v <= xMaxV + 1e-9; v += sc.step) {
+      el("line", { x1: x(v), x2: x(v), y1: TT, y2: TH - 22 }, g);
+      el("text", { x: x(v), y: TH - 6, "text-anchor": "middle" }, svg).textContent = (Math.abs(v) < 1e-9 ? "0" : v.toFixed(Math.abs(v) < 1 ? 2 : 0));
+    }
+    el("line", { class: "axis", x1: x(0), x2: x(0), y1: TT, y2: TH - 22 }, svg);
+    order.forEach((i, r) => {
+      const yy = TT + r * rowH;
+      const v = tm.last[i], v0 = tm.first[i];
+      const pos = v >= 0;
+      el("text", { class: "term", x: TL - 10, y: yy + rowH / 2 + 4, "text-anchor": "end" }, svg).textContent = pretty(tm.names[i]);
+      el("rect", { x: Math.min(x(0), x(v0)), y: yy + 4, width: Math.abs(x(v0) - x(0)), height: rowH - 8, rx: 2, fill: "none", stroke: "var(--ink-3)", "stroke-width": 1, "stroke-dasharray": "2 2" }, svg);
+      el("rect", { x: Math.min(x(0), x(v)), y: yy + 6, width: Math.max(1, Math.abs(x(v) - x(0))), height: rowH - 12, rx: 2, fill: pos ? "var(--act)" : "var(--bad)", "fill-opacity": pos ? 1 : 0.8 }, svg);
+      el("text", { x: pos ? x(Math.max(v, v0, 0)) + 6 : x(Math.max(0, v0)) + 6, y: yy + rowH / 2 + 4 }, svg).textContent = v.toFixed(2);
+    });
+    host.appendChild(svg);
+  })();
+
+  // ---- Method
+  $("method").innerHTML = `
+    <p><b>The task.</b> Every few seconds the robot gets a new joystick command: a forward speed, a sideways speed and a turn rate. It is rewarded for matching those velocities and penalised for jerky actions, wasted energy, dragging its feet and tilting its body. It sees roughly what a real Go1 could sense, with noise added: joint angles and velocities, the gyro, the gravity direction from its IMU, an estimate of its body velocity, its last action and the command. A new action goes out every 20 ms.</p>
+    <p><b>The simulator.</b> <a href="https://github.com/google-deepmind/mujoco_playground">MuJoCo Playground</a> runs the physics with MJX on the GPU, so ${fmt(D.num_envs)} robots step together in one batched call and the policy never leaves the GPU. That is what makes ${mfmt(lastStep)} steps fit into ${minutes(D.elapsed_s)} on a single consumer card; the first ${Math.round(jit)} seconds of that were JAX compiling the training loop.</p>
+    <p><b>The learner.</b> Brax PPO with a 512-256-128 policy network. The value network is <i>asymmetric</i>: during training it also sees privileged simulator state (noise-free sensor readings, motor forces, which feet are on the ground, foot velocities) that the policy does not, which makes learning faster without making the deployed policy depend on sensors a real robot lacks.</p>
+    <p><b>This page.</b> <code>evaluate.py</code> replays each checkpoint through the same scripted joystick and records the robot's body-frame velocity; <code>visualise.py</code> bundles those traces with the training logs.</p>`;
+
+  // ---- Boot
+  selectDemo(D.demos.length - 1, false);
+  requestAnimationFrame(loop);
+})();
+</script>

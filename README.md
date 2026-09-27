@@ -17,6 +17,7 @@ uv sync
 | [`acrobot/`](acrobot/) | [Acrobot-v1](https://gymnasium.farama.org/environments/classic_control/acrobot/) | PPO | Discrete(3) | ≥ −100 |
 | [`mountaincar/`](mountaincar/) | [MountainCarContinuous-v0](https://gymnasium.farama.org/environments/classic_control/mountain_car_continuous/) | PPO + KE shaping | Continuous Box(1) | ≥ 90 |
 | [`game2048/`](game2048/) | 2048 (custom numba bitboard) | N-tuple network + TD(0), expectimax | Discrete(4) | Reach 2048 / 16384 |
+| [`brax/`](brax/) | [Go1JoystickFlatTerrain](https://github.com/google-deepmind/mujoco_playground) (MuJoCo Playground, MJX on GPU) | Brax PPO (JAX) | Continuous Box(12) | Tracks joystick commands |
 
 ## Quick Start
 
@@ -35,6 +36,9 @@ cd mountaincar && uv run python train.py
 
 # 2048 (then: evaluate.py, visualise.py --open)
 cd game2048 && uv run python train.py
+
+# Go1 quadruped on the GPU (separate uv project: JAX + CUDA)
+cd brax && uv sync && uv run python train.py
 ```
 
 ## Watch a Trained Agent
@@ -60,3 +64,4 @@ uv run tensorboard --logdir <folder>/logs/tensorboard
 - All MlpPolicy experiments run on CPU (transfer overhead makes MPS/CUDA slower for small networks).
 - CarRacing uses CnnPolicy on MPS (GPU pays off for pixel-based observations).
 - **2048** skips deep RL entirely: a numba-compiled n-tuple network learns by TD self-play at ~5M moves/s on the CPU. See [`game2048/README.md`](game2048/README.md).
+- **Go1 (brax/)** is its own uv project so JAX's CUDA libraries stay separate from PyTorch's. Physics and policy both run on the GPU: 8,192 robots in parallel at ~45k steps/s on an RTX 3080. See [`brax/README.md`](brax/README.md), or [drive it in your browser](https://claude.ai/artifact/X8f2sowZR5WdLM6BP4ZozQ).

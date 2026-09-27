@@ -33,3 +33,10 @@ checkpoints/
 
 # Generated 2048 replay page
 game2048/replay.html
+
+# Generated Go1 dashboard and browser-sim exports (rebuild with export_web.py / visualise.py)
+brax/dashboard.html
+brax/web/vendor/
+brax/web/go1.mjb
+brax/web/go1_scene.json
+brax/web/policy.json

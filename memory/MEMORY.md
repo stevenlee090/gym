@@ -31,3 +31,11 @@
 ### CarRacing (PPO)
 - Uses PPO (switched from SAC)
 - Has a `wrappers.py` (likely frame stacking / grayscale)
+
+### Go1 joystick (brax/, GPU)
+- Separate uv project (`cd brax && uv sync`): JAX CUDA + brax + MuJoCo Playground; jax pinned <0.10 (brax 0.14 calls removed `jax.device_put_replicated`)
+- Brax PPO, 8,192 envs on an RTX 3080 (WSL2): 124.5M steps in 59 min, eval reward 27.2
+- Learning order: stand -> turn in place (26-52M) -> walk/run/strafe (~60M+)
+- `export_web.py` strips the model to 31 KB and checks sim-to-sim in CPU MuJoCo; `web/sim.js` runs it live in the browser
+- Public demo: https://claude.ai/artifact/X8f2sowZR5WdLM6BP4ZozQ
+- WSL2: MuJoCo rendering needs `MUJOCO_GL=egl`; TensorBoard at http://localhost:6006 with `--bind_all`
